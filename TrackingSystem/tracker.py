@@ -8,6 +8,7 @@ Created on Fri Jul 29 14:16:06 2016
 import cv2
 import numpy as np
 import traceback,sys
+from sender import Sender
 
 class ChotobotTracker(object):
     def __init__(self,h,s,v):
@@ -30,8 +31,7 @@ class ChotobotTracker(object):
         pass
     def start(self):
         '''Start capture'''
-        self.cap = cv2.imread('img1.jpg')
-        #self.cap = cv2.VideoCapture(0)
+        self.cap = cv2.VideoCapture(1)
         self.continue_=True
         cv2.namedWindow('Camara')
         cv2.namedWindow('mask')
@@ -43,6 +43,8 @@ class ChotobotTracker(object):
         cv2.setTrackbarPos('Sat','mask',self.s)
         cv2.setTrackbarPos('Val','mask',self.v)
         cv2.setTrackbarPos('mA','mask',self.min_area)
+        self.sender=Sender()
+        self.sender("/dev/ttyUSB1")
     def trackbarReading(self):
         self.h = cv2.getTrackbarPos('Hue','mask')
         self.s = cv2.getTrackbarPos('Sat','mask')
@@ -54,8 +56,7 @@ class ChotobotTracker(object):
         previous capture object initialized by start()
         '''
         while(self.continue_):
-            self.frame = cv2.imread('img1.jpg')
-            #_, self.frame = self.cap.read()
+            _, self.frame = self.cap.read()
         
             #converting to HSV
             hsv = cv2.cvtColor(self.frame,cv2.COLOR_BGR2HSV)
@@ -72,13 +73,10 @@ class ChotobotTracker(object):
             self.img=result
             
             filtered = cv2.dilate(self.img, self.kernel)
-            
-            #filtered = cv2.morphologyEx(filtered, cv2.MORPH_CLOSE, self.kernel,1)
-            
+            filtered = cv2.morphologyEx(filtered, cv2.MORPH_CLOSE, self.kernel,40)
             cv2.GaussianBlur(filtered, (5, 5), 10)
+            _, filtered = cv2.threshold(filtered,155,255,cv2.THRESH_BINARY) 
             
-            _, filtered = cv2.threshold(filtered,20,255,cv2.THRESH_BINARY) 
-            cv2.imshow('filtered',filtered)
             filtered = cv2.cvtColor(filtered, cv2.COLOR_BGR2GRAY)
             contours,hierarchy = cv2.findContours(filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             filtered = cv2.cvtColor(filtered, cv2.COLOR_GRAY2BGRA)
@@ -100,10 +98,12 @@ class ChotobotTracker(object):
             if len(points)==3:
                 try:
                     self.getTrianglePose(points)
+                    if self.angle<=255:
+                        self.sender.threadedSend(round(90-self.angle))
                 except:
                     traceback.print_exc(file=sys.stdout)
                     pass
-            
+            #cv2.imshow('original',self.frame)
             self.show()
         self.close()
     def getTrianglePose(self,points):
@@ -152,10 +152,11 @@ class ChotobotTracker(object):
         '''
         Close all windows created by the main object        
         '''
+        self.sender.close()
         cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    cT = ChotobotTracker(28,64,117)
+    cT = ChotobotTracker(30,60,255)
     cT.start()
     try:
         cT.process()
